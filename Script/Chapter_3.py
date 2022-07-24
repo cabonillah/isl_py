@@ -1,4 +1,6 @@
+import builtins
 import os
+import sys
 from zipfile import ZipFile
 import pandas as pd
 import numpy as np
@@ -6,11 +8,27 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.formula.api as smf
 import statsmodels.api as sm
-from sklearn.preprocessing import PolynomialFeatures, FunctionTransformer, PowerTransformer, OneHotEncoder
+from sklearn.compose import (ColumnTransformer,
+                             make_column_selector as selector)
+from sklearn.preprocessing import (OneHotEncoder, 
+                                   FunctionTransformer)
+from sklearn.pipeline import (Pipeline, 
+                              FeatureUnion)
+from sklego.preprocessing import PatsyTransformer
 
 
-os.chdir("D:/Archivos/Datos_practica/Python")
-with ZipFile('../ISLR/ALL+CSV+FILES+-+2nd+Edition+-+corrected.zip') as zf:
+#  Returns the path where your current main script is located at
+def current_dir():
+    if "get_ipython" in globals() or "get_ipython" in dir(builtins):        
+        return os.getcwd()
+    else:
+        return os.path.abspath(os.path.dirname(sys.argv[0]))
+
+script_wd = current_dir()
+project_wd = os.path.dirname(script_wd)
+os.chdir(project_wd)
+
+with ZipFile('Data/ISLR/ALL+CSV+FILES+-+2nd+Edition+-+corrected.zip') as zf:
     auto = pd.read_csv(zf.open('ALL CSV FILES - 2nd Edition/Auto.csv'), na_values=['?'])
     
 #Had to omit na's
@@ -18,6 +36,8 @@ auto.dropna(inplace=True)
 #Restaurar los índices del DataFrame después de eliminar los missing values
 auto.reset_index(inplace=True)
 auto.drop('index', axis=1, inplace=True)
+# Interpret origin column as categorical
+auto['origin'] = auto.origin.astype('category')
 
 #Use statsmodels for regression
 fit = smf.ols(formula='mpg~horsepower', data=auto).fit()
@@ -57,76 +77,43 @@ fit2.summary()
 
 #Diagnostic plots are not included because there are no popular packages for Python
 
-# TODO: Regression on all variables except for name, now including interactions 
-# X = todas las variables menos mpg y name
 
-# Función para emplear en FunctionTransformer. Obtiene transformaciones para 
-# las columnas especificadas en "x". Las transformaciones consisten en elevar
-# cada variable hasta el grado indicado en "pwr"
-def my_power(x, pwr):
-    result = pd.DataFrame(np.hstack([x**(i+1) for i in range(1, pwr+1)]))
-    
-    def features(feats):
-        feature_names = [str(i) for i in feats]
-        feature_names_generated = []
-        for i in range(2, pwr+1):
-            for j in feature_names:
-                feature_names_generated.append(j+"^"+str(i))
-        features_complete = feature_names + feature_names_generated
-        return features_complete
-    
-    result.columns = features(x.columns)    
-    return result
-# TODO: Función generadora de nombres para el argumento "feature_names_out"
-# cat = OneHotEncoder(drop='first')
-# deg = FunctionTransformer(my_power,
-#                           kw_args={'pwr':2}, #Argumento de my_power
-#                           feature_names_out=["x"+str(i) for i in range(10)] #Nombres de las columnas obtenidas a partir del transformador
-#                           )
-
-X = auto.drop(['mpg', 'name', 'origin'], axis=1)
-Y = auto[['mpg']]
+X = auto.drop(['mpg', 'name'], axis=1)
+y = auto[['mpg']]
 
 
-    
-# transformer = FunctionTransformer(my_power, kw_args={"pwr":4})
-# X = np.array([[0, 1, 5], 
-#               [2, 3, 1], 
-#               [3, 4, 1]])
-# np.moveaxis(transformer.transform(X), 1, 0).reshape(X.shape[0], X.shape[0]*3)
+numeric_names = list(X.drop(['origin'], axis=1).columns)
+numeric_names_2 = ["I(" + i + "**2)" for i in numeric_names]
+numeric_names += numeric_names_2
+formula = "+".join(numeric_names)
+
+num_feats = [col for col in X.columns if col not in ['origin']]
+cat_feats = ['origin']
 
 
-       
-# X = my_power(X, 2)
-# def mypower2(x):
-#     result = np.power(x, np.arange(1, 3))
-#     return result
 
-# for i in range(3):
-#     print(type(X.iloc[:, i]))
-    
+pat_trans = PatsyTransformer(formula)
+enc_trans = OneHotEncoder(drop='first', handle_unknown='ignore')
 
-# transformer2 = FunctionTransformer(np.sqrt)
-# transformer3 = FunctionTransformer(lambda x: np.power(x, 3))
-# transformer3 = PowerTransformer(exp=2)
-# PowerTransformer()
-# X2 = X['cylinders']
-
-# TODO: convetir el output de PolynomialFeatures a DataFrame
-poly = PolynomialFeatures(interaction_only=True)
-cols_inter = poly.get_feature_names_out().tolist()
-X_inter = poly.fit_transform(X)
-
-transformer = FunctionTransformer(my_power, kw_args={'pwr':2})
-X_power = transformer.fit_transform(X)
-
-# TODO: convetir el output de OneHotEncoder a DataFrame
-enc = OneHotEncoder(drop='first', handle_unknown='ignore')
-cols_dummies = enc.get_feature_names_out().tolist()
-X_dummies = enc.fit_transform(auto[['origin']])
-X_dummies.toarray()
+transformer_num = Pipeline(steps=[('pat_trans', pat_trans)])
+transformer_cat = Pipeline(steps=[('onehotenc', enc_trans)])
 
 
-fit3 = sm.OLS(Y, X).fit()
-fit3.summary()
+transformer = ColumnTransformer(transformers=[('num_trans', transformer_num, num_feats),
+                                              ('cat_trans', transformer_cat, cat_feats)], 
+                                              remainder='passthrough')
+
+
+pipe = Pipeline(steps=[('columntrans', transformer)])
+
+
+
+num_vars_in_fit = pipe.fit(X).named_steps.columntrans.transformers[0][1].named_steps.pat_trans.fit(X[num_feats]).design_info_.column_names
+cat_vars_in_fit = list(pipe.fit(X).named_steps.columntrans.fit(X).transformers[1][1].named_steps.onehotenc.fit(X[cat_feats]).get_feature_names_out())
+total_vars_in_fit = num_vars_in_fit + cat_vars_in_fit
+
+X_fit = pipe.fit_transform(X)
+
+sm.OLS(y, X_fit).fit().summary(xname = total_vars_in_fit)
+
 
