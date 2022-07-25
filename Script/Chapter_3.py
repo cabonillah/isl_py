@@ -8,12 +8,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.formula.api as smf
 import statsmodels.api as sm
-from sklearn.compose import (ColumnTransformer,
-                             make_column_selector as selector)
-from sklearn.preprocessing import (OneHotEncoder, 
-                                   FunctionTransformer)
-from sklearn.pipeline import (Pipeline, 
-                              FeatureUnion)
+from sklearn.compose import ColumnTransformer                             
+from sklearn.preprocessing import OneHotEncoder                                   
+from sklearn.pipeline import Pipeline
+#sklego es un módulo experimental. Su funcionalidad puede cambiar
 from sklego.preprocessing import PatsyTransformer
 
 
