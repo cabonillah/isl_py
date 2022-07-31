@@ -8,9 +8,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.formula.api as smf
 import statsmodels.api as sm
+from sklearn.base import (BaseEstimator, 
+                          RegressorMixin)
 from sklearn.compose import (ColumnTransformer,
                              make_column_selector as selector)
-from sklearn.preprocessing import (OneHotEncoder, 
+from sklearn.preprocessing import (PolynomialFeatures,
+                                   OneHotEncoder, 
                                    FunctionTransformer)
 from sklearn.pipeline import (Pipeline, 
                               FeatureUnion)
@@ -78,8 +81,35 @@ fit2.summary()
 #Diagnostic plots are not included because there are no popular packages for Python
 
 
+#Regression with interaction effects
+
 X = auto.drop(['mpg', 'name'], axis=1)
 y = auto[['mpg']]
+
+
+
+# TODO: incluir la transformación polinómica dentro de un pipeline que 
+# implemente la clase SMWrapper
+
+class SMWrapper(BaseEstimator, RegressorMixin):
+    """ A universal sklearn-style wrapper for statsmodels regressors """
+    def __init__(self, model_class, fit_intercept=True):
+        self.model_class = model_class
+        self.fit_intercept = fit_intercept
+    def fit(self, X, y):
+        if self.fit_intercept:
+            X = sm.add_constant(X)
+        self.model_ = self.model_class(y, X)
+        self.results_ = self.model_.fit()
+        return self
+    def predict(self, X):
+        if self.fit_intercept:
+            X = sm.add_constant(X)
+        return self.results_.predict(X)
+
+poly_transform = PolynomialFeatures(1, interaction_only=True)
+X_inter = poly_transform.fit_transform(X)
+sm.OLS(y, X_inter).fit().summary(xname = total_vars_in_fit)
 
 
 numeric_names = list(X.drop(['origin'], axis=1).columns)
