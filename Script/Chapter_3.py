@@ -8,9 +8,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import statsmodels.formula.api as smf
 import statsmodels.api as sm
-from sklearn.compose import ColumnTransformer                             
-from sklearn.preprocessing import OneHotEncoder                                   
 from sklearn.pipeline import Pipeline
+from sklearn.base import (BaseEstimator, 
+                          RegressorMixin)
+from sklearn.compose import ColumnTransformer                             
+from sklearn.preprocessing import (PolynomialFeatures,
+                                   OneHotEncoder)
 #sklego es un módulo experimental. Su funcionalidad puede cambiar
 from sklego.preprocessing import PatsyTransformer
 
@@ -76,8 +79,43 @@ fit2.summary()
 #Diagnostic plots are not included because there are no popular packages for Python
 
 
+#Regression with interaction effects
+
 X = auto.drop(['mpg', 'name'], axis=1)
 y = auto[['mpg']]
+
+
+poly_transform = PolynomialFeatures(1, interaction_only=True, include_bias=False)
+
+poly_transformer = ColumnTransformer(transformers=[('poly_trans', poly_transform, X.columns)], 
+                                              remainder='passthrough')
+
+# TODO: la transformación polinómica no se está ejecutando antes del ols.fit
+
+class SMWrapper(BaseEstimator, RegressorMixin):
+    """ A universal sklearn-style wrapper for statsmodels regressors """
+    def __init__(self, model_class, fit_intercept=True):
+        self.model_class = model_class
+        self.fit_intercept = fit_intercept
+    def fit(self, X, y):
+        if self.fit_intercept:
+            X = sm.add_constant(X)
+        self.model_ = self.model_class(y, X)
+        self.results_ = self.model_.fit()
+        return self
+    def predict(self, X):
+        if self.fit_intercept:
+            X = sm.add_constant(X)
+        return self.results_.predict(X)
+
+olsFit = SMWrapper(model_class=sm.OLS)
+
+pipe_interac = Pipeline(steps=[('interactions', poly_transformer),
+                               ('ols', olsFit)])
+
+pipe_interac.fit(X, y)[1].results_.summary()
+
+sm.OLS(y, X_inter).fit().summary(xname = total_vars_in_fit)
 
 
 numeric_names = list(X.drop(['origin'], axis=1).columns)
