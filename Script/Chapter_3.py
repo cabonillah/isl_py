@@ -85,12 +85,10 @@ X = auto.drop(['mpg', 'name'], axis=1)
 y = auto[['mpg']]
 
 
-poly_transform = PolynomialFeatures(1, interaction_only=True, include_bias=False)
+poly_transform = PolynomialFeatures(2, interaction_only=True, include_bias=False)
 
 poly_transformer = ColumnTransformer(transformers=[('poly_trans', poly_transform, X.columns)], 
                                               remainder='passthrough')
-
-# TODO: la transformación polinómica no se está ejecutando antes del ols.fit
 
 class SMWrapper(BaseEstimator, RegressorMixin):
     """ A universal sklearn-style wrapper for statsmodels regressors """
@@ -113,7 +111,14 @@ olsFit = SMWrapper(model_class=sm.OLS)
 pipe_interac = Pipeline(steps=[('interactions', poly_transformer),
                                ('ols', olsFit)])
 
-pipe_interac.fit(X, y)[1].results_.summary()
+"""Fetch variable names that were transformed by the pipeline for later use in
+regression's output"""
+names_interac = list(pipe_interac.fit(X, y)[0].get_feature_names_out())
+names_interac.insert(0, 'Constant')
+names_interac = [i.replace(" ", "__") for i in names_interac]
+
+"""Regression with variable names"""
+pipe_interac.fit(X, y)[1].results_.summary(xname=names_interac)
 
 sm.OLS(y, X_inter).fit().summary(xname = total_vars_in_fit)
 
